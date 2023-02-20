@@ -34,7 +34,7 @@ scrapped_urls = set()
 emails = set()
 count = 0
 
-if user_urls in g_urls:
+for user_urls in g_urls:
 	urls = deque([user_urls])
 	print('-' * 80)
 	try:
@@ -50,3 +50,38 @@ if user_urls in g_urls:
 			base_url = '{0.scheme}://{0.netloc}'.format(parts)
 			path = url[:url.rfind('/')+1] if '/' in parts.path else url
 			print('[%d] Processing %s' % (count, url))
+
+			try:
+				response = requests.get(url)
+			except (requests.exceptions.MissingSchema, requests.exceptions.ConnectionError):
+				continue
+
+			new_emails = set(re.findall(r'[a-z0-9\.\-+]+@[a-z0-9\.\-+]+\.[a-z]+', response.text, re.I))
+			emails.update(new_emails)
+
+			for l in emails:
+				NULL_ = None
+				date_time = datetime.datetime.now()
+				_date = str(date_time.date())
+				_time = str(date_time.strftime('%X'))
+				cursor = myconn.cursor(buffered=True)
+				emailBulk = (NULL_, g_query, l, _date, _time)
+				sql = 'INSERT INTO `emailbulk` (`ID`, `searchterm`, `email`, `date`, `time`) VALUES(%s,%s,%s,%s,%s)'
+				cursor.execute(sql, emailBulk)
+				myconn.commit()
+
+			soup = BeautifulSoup(response.text, features='lxml')
+
+			for anchor in soup.find_all('a'):
+				link = anchor.attrs['href'] if 'gref' in anchor.attrs else ''
+				if link.startswith('/'):
+					link = base_url + link
+				elif not link.startswith('http'):
+					link = path + link
+				if not link in urls and not link in scrapped_urls:
+					urls.append(link)
+	except KeyboardInterrupt:
+		count = 0
+		print('[-] Closing')
+print('-' * 80)
+			
